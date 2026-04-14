@@ -54,10 +54,23 @@ create policy "post_images_owner_write"
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
--- Before running this block, set these in Supabase dashboard → SQL editor:
---   select vault.create_secret('https://your-vercel-app.vercel.app', 'app_url');
---   select vault.create_secret('your-random-cron-secret', 'cron_secret');
--- OR replace the two vault.read_secret() calls below with literal strings.
+-- Settings table — stored in a private schema so PostgREST does not expose it.
+-- Supabase free tier blocks `alter database ... set`, so we use a table instead.
+create schema if not exists private;
+
+create table if not exists private.agent_settings (
+  id             int primary key default 1,
+  app_url        text not null,
+  cron_secret    text not null,
+  updated_at     timestamptz not null default now(),
+  constraint agent_settings_singleton check (id = 1)
+);
+
+-- Insert a placeholder row. The user will UPDATE it with real values after
+-- this migration runs (see "Post-migration setup" block at the bottom).
+insert into private.agent_settings (id, app_url, cron_secret)
+values (1, 'https://replace-me.vercel.app', 'replace-me')
+on conflict (id) do nothing;
 
 -- Remove existing schedule if present so this migration is idempotent.
 do $$
@@ -68,23 +81,48 @@ begin
 end $$;
 
 -- Schedule: every 5 minutes, POST to /api/trigger with the cron secret header.
--- Replace the $URL$ and $SECRET$ placeholders before running, or wire up Vault.
+-- Reads the current app_url + cron_secret from private.agent_settings at run time,
+-- so you can update them later without re-scheduling.
 select cron.schedule(
   'agentfb_run_agent_every_5min',
   '*/5 * * * *',
   $cron$
   select net.http_post(
-    url := current_setting('app.settings.agentfb_url', true) || '/api/trigger',
+    url := (select app_url from private.agent_settings where id = 1) || '/api/trigger',
     headers := jsonb_build_object(
       'content-type', 'application/json',
-      'x-cron-secret', current_setting('app.settings.agentfb_cron_secret', true)
+      'x-cron-secret', (select cron_secret from private.agent_settings where id = 1)
     ),
     body := '{}'::jsonb
   );
   $cron$
 );
 
--- To set the two settings used above (run once in SQL editor):
---   alter database postgres set app.settings.agentfb_url to 'https://your-app.vercel.app';
---   alter database postgres set app.settings.agentfb_cron_secret to 'your-random-secret';
--- After altering, reload: select pg_reload_conf();
+-- ============================================================
+-- Post-migration setup (run ONCE after this migration, with real values):
+--
+--   update private.agent_settings
+--   set app_url     = 'https://your-app.vercel.app',
+--       cron_secret = 'your-random-cron-secret',
+--       updated_at  = now()
+--   where id = 1;
+--
+-- Verify:
+--   select app_url, left(cron_secret, 4) || '...' from private.agent_settings;
+--   select jobid, schedule, jobname from cron.job where jobname = 'agentfb_run_agent_every_5min';
+--
+-- Manually fire the cron body once (to test without waiting 5 min):
+--   select net.http_post(
+--     url := (select app_url from private.agent_settings where id = 1) || '/api/trigger',
+--     headers := jsonb_build_object(
+--       'content-type', 'application/json',
+--       'x-cron-secret', (select cron_secret from private.agent_settings where id = 1)
+--     ),
+--     body := '{}'::jsonb
+--   );
+--
+-- Inspect recent cron runs:
+--   select * from cron.job_run_details
+--   where jobid = (select jobid from cron.job where jobname = 'agentfb_run_agent_every_5min')
+--   order by start_time desc limit 10;
+-- ============================================================

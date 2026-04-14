@@ -3,7 +3,21 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
 
+// Endpoints that authenticate via a shared secret header rather than a Supabase
+// session. The route handler validates the secret itself — middleware just has
+// to step out of the way when the header is present.
+const CRON_PATHS = ["/api/trigger"];
+
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  if (
+    CRON_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) &&
+    request.headers.get("x-cron-secret")
+  ) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -31,7 +45,6 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   if (!user && !isPublic) {
