@@ -8,6 +8,11 @@ const PUBLIC_PATHS = ["/login", "/auth"];
 // to step out of the way when the header is present.
 const CRON_PATHS = ["/api/trigger"];
 
+// Webhook endpoints called by external services (no user session, no cron
+// secret). Must be fully open to the internet; the route handler validates
+// the payload.
+const WEBHOOK_PATHS = ["/api/kie-callback"];
+
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
@@ -15,6 +20,10 @@ export async function updateSession(request: NextRequest) {
     CRON_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) &&
     request.headers.get("x-cron-secret")
   ) {
+    return NextResponse.next({ request });
+  }
+
+  if (WEBHOOK_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return NextResponse.next({ request });
   }
 
