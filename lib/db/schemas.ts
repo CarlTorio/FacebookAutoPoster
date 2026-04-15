@@ -38,25 +38,27 @@ export type BrandInput = z.infer<typeof brandInputSchema>;
 
 // ---------- api_keys ----------
 
+// .trim() strips whitespace (including trailing \n from clipboard pastes)
+// before validation, which prevents silently-invalid tokens from being stored.
 export const claudeCredsSchema = z.object({
-  api_key: z.string().min(10),
+  api_key: z.string().trim().min(10),
 });
 
 export const geminiCredsSchema = z.object({
-  api_key: z.string().min(10),
+  api_key: z.string().trim().min(10),
 });
 
 export const facebookCredsSchema = z.object({
-  app_id: z.string().min(1),
-  app_secret: z.string().min(1),
-  page_id: z.string().min(1),
-  page_access_token: z.string().min(1),
+  app_id: z.string().trim().min(1),
+  app_secret: z.string().trim().min(1),
+  page_id: z.string().trim().min(1),
+  page_access_token: z.string().trim().min(1),
   token_expires_at: z.string().optional(),
 });
 
 export const telegramCredsSchema = z.object({
-  bot_token: z.string().min(10),
-  chat_id: z.string().min(1),
+  bot_token: z.string().trim().min(10),
+  chat_id: z.string().trim().min(1),
 });
 
 export const apiKeyServiceSchema = z.enum([

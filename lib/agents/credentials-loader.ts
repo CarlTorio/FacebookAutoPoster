@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decodeCredentials } from "@/lib/db/credentials";
+import { traceCred } from "@/lib/db/cred-trace";
 import type {
   ApiKeyService,
   CredentialsByService,
@@ -18,5 +19,21 @@ export async function loadCredentials<S extends ApiKeyService>(
     .maybeSingle();
 
   if (error || !data) return null;
-  return decodeCredentials(service, data.credentials as CredentialsByService[S]);
+
+  const stored = data.credentials as CredentialsByService[S];
+  if (service === "facebook") {
+    traceCred(
+      "4-after-retrieve",
+      (stored as { page_access_token?: string }).page_access_token,
+    );
+  }
+
+  const decoded = decodeCredentials(service, stored);
+  if (service === "facebook") {
+    traceCred(
+      "5-after-decode",
+      (decoded as { page_access_token?: string }).page_access_token,
+    );
+  }
+  return decoded;
 }

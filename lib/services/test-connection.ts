@@ -1,4 +1,5 @@
 import type { CredentialsByService } from "@/lib/db/types";
+import { traceCred } from "@/lib/db/cred-trace";
 
 export type TestResult = { ok: true; message: string } | { ok: false; message: string };
 
@@ -31,6 +32,7 @@ async function testGemini(creds: CredentialsByService["gemini"]): Promise<TestRe
 }
 
 async function testFacebook(creds: CredentialsByService["facebook"]): Promise<TestResult> {
+  traceCred("6-before-fetch", creds.page_access_token);
   // /me returns the identity the token represents (a Page for a page-access-token).
   // Works with any valid page token, no pages_read_engagement required.
   const res = await fetch(
