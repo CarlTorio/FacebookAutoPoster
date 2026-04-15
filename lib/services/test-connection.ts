@@ -31,18 +31,36 @@ async function testGemini(creds: CredentialsByService["gemini"]): Promise<TestRe
 }
 
 async function testFacebook(creds: CredentialsByService["facebook"]): Promise<TestResult> {
-  const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(creds.page_id)}?fields=id,name&access_token=${encodeURIComponent(creds.page_access_token)}`;
-  const res = await fetch(url);
+  // /me returns the identity the token represents (a Page for a page-access-token).
+  // Works with any valid page token, no pages_read_engagement required.
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(creds.page_access_token)}`,
+  );
   const body = await res.text();
-  if (res.ok) {
-    try {
-      const json = JSON.parse(body) as { name?: string };
-      return { ok: true, message: `Facebook OK (${json.name ?? creds.page_id})` };
-    } catch {
-      return { ok: true, message: "Facebook OK" };
-    }
+
+  if (!res.ok) {
+    return { ok: false, message: `Facebook ${res.status}: ${body.slice(0, 200)}` };
   }
-  return { ok: false, message: `Facebook ${res.status}: ${body.slice(0, 200)}` };
+
+  let json: { id?: string; name?: string };
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return { ok: false, message: "Facebook returned non-JSON response" };
+  }
+
+  if (!json.id) {
+    return { ok: false, message: "Facebook /me returned no id (token invalid?)" };
+  }
+
+  if (creds.page_id && json.id !== creds.page_id) {
+    return {
+      ok: false,
+      message: `Token is for page id ${json.id}, but configured page_id is ${creds.page_id}`,
+    };
+  }
+
+  return { ok: true, message: `Facebook OK (${json.name ?? json.id})` };
 }
 
 async function testTelegram(creds: CredentialsByService["telegram"]): Promise<TestResult> {
